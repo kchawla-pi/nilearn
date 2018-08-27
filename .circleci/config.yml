@@ -3,7 +3,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: kchawlapi/circleci-nilearn-env:20180817-1
+      - image: kchawlapi/nilearn-circleci
     environment:
       DISTRIB: "conda"
       PYTHON_VERSION: "3.6"
@@ -19,6 +19,7 @@ jobs:
       - run:
           name: Running CircleCI test (make html)
           command: |
+            source activate testenv
             pip install -e .
             set -o pipefail && cd doc && make html-strict 2>&1 | tee $HOME/log.txt
           no_output_timeout: 5h
