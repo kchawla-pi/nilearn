@@ -4,7 +4,7 @@ jobs:
   build:
     docker:
       - image: kchawlapi/nilearn-circleci
-    parallelism: 4
+    parallelism: 2
     environment:
       DISTRIB: "conda"
       PYTHON_VERSION: "3.6"
