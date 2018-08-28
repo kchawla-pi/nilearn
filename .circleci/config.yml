@@ -16,7 +16,7 @@ jobs:
     steps:
       - checkout
       - restore_cache:
-          key: v1-datasets-{{ .Branch }}
+          key: datasets-{{ .Branch }}
       - run:
           name: Running CircleCI test (make html)
           command: |
@@ -27,7 +27,7 @@ jobs:
       - store_test_results:
           path: test-results
       - save_cache:
-          key: v1-packages+datasets-{{ .Branch }}
+          key: datasets-{{ .Branch }}
           paths:
           - $HOME/nilearn_data
 
