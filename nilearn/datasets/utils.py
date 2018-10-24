@@ -496,16 +496,10 @@ def _fetch_file(url, data_dir, resume=True, overwrite=False,
     # Determine data path
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
-
-    # Determine filename using URL
-    parse = _urllib.parse.urlparse(url)
-    file_name = os.path.basename(parse.path)
-    if file_name == '':
-        file_name = md5_hash(parse.path)
-
-    temp_file_name = file_name + ".part"
-    full_name = os.path.join(data_dir, file_name)
-    temp_full_name = os.path.join(data_dir, temp_file_name)
+        
+    file_name, full_name, temp_full_name = _make_filename_from_url(data_dir,
+                                                                   url,
+                                                                   )
     if os.path.exists(full_name):
         if overwrite:
             os.remove(full_name)
@@ -514,51 +508,24 @@ def _fetch_file(url, data_dir, resume=True, overwrite=False,
     if os.path.exists(temp_full_name):
         if overwrite:
             os.remove(temp_full_name)
+            
     t0 = time.time()
     local_file = None
     initial_size = 0
 
     try:
         # Download data
-        url_opener = _urllib.request.build_opener(*handlers)
-        request = _urllib.request.Request(url)
-        request.add_header('Connection', 'Keep-Alive')
-        if username is not None and password is not None:
-            if not url.startswith('https'):
-                raise ValueError(
-                    'Authentication was requested on a non  secured URL (%s).'
-                    'Request has been blocked for security reasons.' % url)
-            # Note: HTTPBasicAuthHandler is not fitted here because it relies
-            # on the fact that the server will return a 401 error with proper
-            # www-authentication header, which is not the case of most
-            # servers.
-            encoded_auth = base64.b64encode(
-                (username + ':' + password).encode())
-            request.add_header(b'Authorization', b'Basic ' + encoded_auth)
+        request, url_opener = _request_data_download(handlers, password, url, username)
         if verbose > 0:
             displayed_url = url.split('?')[0] if verbose == 1 else url
             print('Downloading data from %s ...' % displayed_url)
         if resume and os.path.exists(temp_full_name):
             # Download has been interrupted, we try to resume it.
-            local_file_size = os.path.getsize(temp_full_name)
-            # If the file exists, then only download the remainder
-            request.add_header("Range", "bytes=%s-" % (local_file_size))
-            try:
-                data = url_opener.open(request)
-                content_range = data.info().get('Content-Range')
-                if (content_range is None or not content_range.startswith(
-                        'bytes %s-' % local_file_size)):
-                    raise IOError('Server does not support resuming')
-            except Exception:
-                # A wide number of errors can be raised here. HTTPError,
-                # URLError... I prefer to catch them all and rerun without
-                # resuming.
-                if verbose > 0:
-                    print('Resuming failed, try to download the whole file.')
-                return _fetch_file(
-                    url, data_dir, resume=False, overwrite=overwrite,
-                    md5sum=md5sum, username=username, password=password,
-                    handlers=handlers, verbose=verbose)
+            _prep_for_retry_download(temp_full_name, request, url_opener, verbose)
+            return _fetch_file(
+                url, data_dir, resume=False, overwrite=overwrite,
+                md5sum=md5sum, username=username, password=password,
+                handlers=handlers, verbose=verbose)
             local_file = open(temp_full_name, "ab")
             initial_size = local_file_size
         else:
@@ -588,6 +555,55 @@ def _fetch_file(url, data_dir, resume=True, overwrite=False,
             raise ValueError("File %s checksum verification has failed."
                              " Dataset fetching aborted." % local_file)
     return full_name
+
+
+def _prep_for_retry_download(temp_full_name, request, url_opener, verbose):
+    local_file_size = os.path.getsize(temp_full_name)
+    # If the file exists, then only download the remainder
+    request.add_header("Range", "bytes=%s-" % (local_file_size))
+    try:
+        data = url_opener.open(request)
+        content_range = data.info().get('Content-Range')
+        if (content_range is None or not content_range.startswith(
+                'bytes %s-' % local_file_size)):
+            raise IOError('Server does not support resuming')
+    except Exception:
+        # A wide number of errors can be raised here. HTTPError,
+        # URLError... I prefer to catch them all and rerun without
+        # resuming.
+        if verbose > 0:
+            print('Resuming failed, try to download the whole file.')
+
+
+def _request_data_download(handlers, password, url, username):
+    url_opener = _urllib.request.build_opener(*handlers)
+    request = _urllib.request.Request(url)
+    request.add_header('Connection', 'Keep-Alive')
+    if username is not None and password is not None:
+        if not url.startswith('https'):
+            raise ValueError(
+                    'Authentication was requested on a non  secured URL (%s).'
+                    'Request has been blocked for security reasons.' % url)
+        # Note: HTTPBasicAuthHandler is not fitted here because it relies
+        # on the fact that the server will return a 401 error with proper
+        # www-authentication header, which is not the case of most
+        # servers.
+        encoded_auth = base64.b64encode(
+                (username + ':' + password).encode())
+        request.add_header(b'Authorization', b'Basic ' + encoded_auth)
+    return request, url_opener
+
+
+def _make_filename_from_url(data_dir, url):
+    # Determine filename using URL
+    parse = _urllib.parse.urlparse(url)
+    file_name = os.path.basename(parse.path)
+    if file_name == '':
+        file_name = md5_hash(parse.path)
+    temp_file_name = file_name + ".part"
+    full_name = os.path.join(data_dir, file_name)
+    temp_full_name = os.path.join(data_dir, temp_file_name)
+    return file_name, full_name, temp_full_name
 
 
 def _get_dataset_descr(ds_name):
@@ -759,7 +775,7 @@ def _fetch_files(data_dir, files, resume=True, mock=False, verbose=1):
         files_.append(target_file)
     # If needed, move files from temps directory to final directory.
     if os.path.exists(temp_dir):
-        # XXX We could only moved the files requested
+        # XXX We could only move the files requested
         # XXX Movetree can go wrong
         movetree(temp_dir, data_dir)
         shutil.rmtree(temp_dir)
