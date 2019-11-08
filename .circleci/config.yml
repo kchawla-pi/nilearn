@@ -87,7 +87,7 @@ commands:
           name: Install packages in conda env
           command: |
             conda install -n testenv python=3.7 numpy scipy scikit-learn matplotlib pandas \
-            lxml mkl sphinx numpydoc pillow pandas -yq
+            lxml mkl sphinx numpydoc pillow pandas cython mkl -yq
             conda install -n testenv nibabel sphinx-gallery junit-xml -c conda-forge -yq
 
   build_docs:
