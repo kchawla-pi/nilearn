@@ -74,7 +74,8 @@ jobs:
           name: Running CircleCI test (make html)
           command: |
             source activate testenv
-            pip install -e .
+            python setup.py bdist_wheel
+            pip install dist/nilearn*.whl
             set -o pipefail && cd doc && make html-strict 2>&1 | tee log.txt
           no_output_timeout: 7h
       - store_test_results:
@@ -135,7 +136,8 @@ jobs:
           name: Running CircleCI test (make html)
           command: |
             source activate testenv
-            pip install -e .
+            python setup.py bdist_wheel
+            pip install dist/nilearn*.whl
             set -o pipefail && cd doc && make html-strict 2>&1 | tee log.txt
           no_output_timeout: 7h
       - store_test_results:
