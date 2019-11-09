@@ -34,15 +34,12 @@ def get_cache_to_be_cleared(valid_options, cli_args):
 
 def clear_cache(valid_options, which_cache):
     if which_cache == 'docs':
-        print('docs')
-        # update_cache_timestamp('docs-cache-timestamp')
+        update_cache_timestamp('docs-cache-timestamp')
     elif which_cache == 'packages':
-        print('packages')
-        # update_cache_timestamp('packages-cache-timestamp')
+        update_cache_timestamp('packages-cache-timestamp')
     elif which_cache == 'both':
-        print('both')
-        # update_cache_timestamp('docs-cache-timestamp')
-        # update_cache_timestamp('packages-cache-timestamp')
+        update_cache_timestamp('docs-cache-timestamp')
+        update_cache_timestamp('packages-cache-timestamp')
     else:
         err_msg = ('Invalid option. '
                    'Valid options are: {}. '
