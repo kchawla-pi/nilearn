@@ -222,7 +222,7 @@ objects":
     method and ``affine`` attribute, typically a ``Nifti1Image`` from nibabel_.
 
 **Niimg-4D:** Similarly, some functions require 4D Nifti-like
-data, which we call Niimgs or Niimg-4D. Accepted input arguments are:
+data, which we call Niimgs or Niimg-4D. Accepted input arguments are
 
   * A path to a 4D Nifti image
   * List of paths to 3D Nifti images
@@ -233,6 +233,16 @@ data, which we call Niimgs or Niimg-4D. Accepted input arguments are:
 
    If you provide a sequence of Nifti images, all of them must have the same
    affine.
+
+.. topic:: Decreasing memory used when loading Nifti images
+
+   When Nifti images are stored compressed (.nii.gz), loading them directly
+   consumes more memory. As a result, large 4D images may
+   raise "MemoryError", especially on smaller computers and when using Nilearn
+   routines that require intensive 4D matrix operations. One step to improve
+   the situation may be to gunzip the data onto disk as an initial step.
+   If multiple images are loaded into memory sequentially, another solution may
+   be to `uncache <https://nipy.org/nibabel/images_and_memory.html#using-uncache>`_ one before loading and performing operations on another.
 
 Text files: phenotype or behavior
 ----------------------------------
