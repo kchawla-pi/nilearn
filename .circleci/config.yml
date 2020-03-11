@@ -145,11 +145,12 @@ jobs:
 
     steps:
       - checkout
+      - run: ./.circleci/checkout_merge_commit.sh
       - preinstall
       - restore_from_cache
       - cache_aware_conda_setup
       - install_dependencies
-      - build_docs
+      - run: ./.circleci/build_doc.sh
       - store_results
       - save_to_cache
 
