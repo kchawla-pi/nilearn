@@ -38,7 +38,7 @@ jobs:
       - save_cache:
           key: v1-datasets-{{ .Branch }}
           paths:
-            - ~/scikit_learn_data
+            - ~/nilearn_data
       - store_artifacts:
           path: doc/_build/html/stable
           destination: doc
@@ -73,7 +73,7 @@ jobs:
       - save_cache:
           key: v1-datasets-{{ .Branch }}
           paths:
-            - ~/scikit_learn_data
+            - ~/nilearn_data
       - store_artifacts:
           path: doc/_build/html/stable
           destination: doc
@@ -85,19 +85,6 @@ jobs:
       - persist_to_workspace:
           root: doc/_build/html
           paths: .
-
-  lint:
-    docker:
-      - image: circleci/python:3.6
-    steps:
-      - checkout
-      - run: ./build_tools/circle/checkout_merge_commit.sh
-      - run:
-          name: dependencies
-          command: sudo pip install flake8
-      - run:
-          name: linting
-          command: ./build_tools/circle/linting.sh
 
   pypy3:
     docker:
@@ -115,49 +102,9 @@ jobs:
             - ~/.ccache
             - ~/.cache/pip
 
-  deploy:
-    docker:
-      - image: circleci/python:3.6
-    steps:
-      - checkout
-      - run: ./build_tools/circle/checkout_merge_commit.sh
-      # Attach documentation generated in the 'doc' step so that it can be
-      # deployed.
-      - attach_workspace:
-          at: doc/_build/html
-      - run: ls -ltrh doc/_build/html/stable
-      - deploy:
-          command: |
-            if [[ "${CIRCLE_BRANCH}" =~ ^master$|^[0-9]+\.[0-9]+\.X$ ]]; then
-              bash build_tools/circle/push_doc.sh doc/_build/html/stable
-            fi
-
 workflows:
   version: 2
-  build-doc-and-deploy:
+  build-doc-:
     jobs:
-      - lint
-      - doc:
-          requires:
-            - lint
-      - doc-min-dependencies:
-          requires:
-            - lint
-      - pypy3:
-          filters:
-            branches:
-              only:
-                - 0.20.X
-      - deploy:
-          requires:
-            - doc
-  pypy:
-    triggers:
-      - schedule:
-          cron: "0 0 * * *"
-          filters:
-            branches:
-              only:
-                - master
-    jobs:
-      - pypy3
+      - doc
+      - doc-min-dependencies
