@@ -1,202 +1,163 @@
-# quick-build rebuilds changes using the cached documentation.
-# The cache is emptied everyday, forcing a full build on the day's first push.
-# It doesn't operate on master branch. New branches are always built from scratch.
-# full-build always rebuilds from scratch, without any cache. Only for changes in master branch.
-
-version: 2.1
-
-commands:
-
-  preinstall:
-    description: "Cleans up unused packages; Updates system packages"
-    steps:
-      - run:
-          name: Remove conflicting packages
-          command: |
-            # Get rid of existing virtualenvs on circle ci as they conflict with conda.
-            # Trick found here:
-            # https://discuss.circleci.com/t/disable-autodetection-of-project-or-application-of-python-venv/235/10
-            cd && rm -rf ~/.pyenv && rm -rf ~/virtualenvs
-
-            # We need to remove conflicting texlive packages.
-            sudo -E apt-get -yq remove texlive-binaries --purge
-      - run:
-          name: Install packages for make -C doc check
-          command: |
-            # Installing required packages for `make -C doc check command` to work.
-            sudo -E apt-get -yq update
-            sudo -E apt-get -yq --no-install-suggests --no-install-recommends --force-yes install dvipng texlive-latex-base texlive-latex-extra
-
-  restore_from_cache:
-    description: "Restores the cache of previously built docs & python packages if present"
-    steps:
-      - run:
-          name: Generate cache keys from today's date for built docs & week number for python packages
-          command: |
-            date +%F > today
-            date +%U > week_num
-      - restore_cache:
-          key: v1-packages+datasets-{{ checksum "week_num" }}-{{ checksum ".circleci/packages-cache-timestamp" }}
-      - restore_cache:
-          key: v1-docs-{{ .Branch }}-{{ checksum "today" }}-{{ checksum ".circleci/docs-cache-timestamp" }}
-
-  cache_aware_conda_setup:
-    description: "Downloads & installs conda if not restord by cache"
-    steps:
-      - run:
-          name: Download & install conda if absent
-          command: |
-            if
-              ls $HOME/miniconda3/bin | grep conda -q
-            then
-              echo "(Mini)Conda already present from the cache."
-            else
-              wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
-              chmod +x ~/miniconda.sh && ~/miniconda.sh -b
-            fi
-      - run:
-          name: Setup conda path in env variables
-          command: |
-            echo 'export PATH="$HOME/miniconda3/bin:$PATH"'  >> $BASH_ENV
-      - run:
-          name: Create new conda env
-          command: |
-            if
-              conda env list | grep testenv
-            then
-              echo "Conda env testenv already exists courtesy of the cache."
-            else
-              conda create -n testenv -yq
-            fi
-
-  cache_ignorant_conda_setup:
-    description: "Downloads & installs only the fresh copy of conda."
-    steps:
-      - run:
-          name: setup conda afresh
-          command: |
-            wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
-            chmod +x ~/miniconda.sh && ~/miniconda.sh -b
-            echo 'export PATH="$HOME/miniconda3/bin:$PATH"'  >> $BASH_ENV
-      - run: conda create -n testenv
-
-  install_dependencies:
-    description: "Installs the necessary Python packages"
-    steps:
-      - run:
-          name: Install packages in conda env
-          command: |
-            conda install -n testenv python=3.7 numpy scipy scikit-learn matplotlib pandas \
-            lxml mkl sphinx numpydoc pillow pandas -yq
-            conda install -n testenv nibabel sphinx-gallery junit-xml -c conda-forge -yq
-
-  build_docs:
-    description: "Installs Nilearn & builds documentation using Sphinx's make html-strict"
-    steps:
-      - run:
-          name: Building documentation
-          command: |
-            source activate testenv
-            pip install -e .
-            set -o pipefail && cd doc && make html-strict 2>&1 | tee log.txt
-          no_output_timeout: 7h
-
-  store_results:
-    description: "Stores build times and artifacts"
-    steps:
-      - store_test_results:
-          path: doc/_build/test-results
-      - store_artifacts:
-          path: doc/_build/test-results
-      - store_artifacts:
-          path: doc/_build/html
-      - store_artifacts:
-          path: coverage
-      - store_artifacts:
-          path: doc/log.txt
-
-  save_to_cache:
-    description: "Caches the downloaded packages & buit docs."
-    steps:
-      - save_cache:
-          key: v1-packages+datasets-{{ checksum "week_num" }}
-          paths:
-            - ../nilearn_data
-            - ../miniconda3
-      - save_cache:
-          key: v1-docs-{{ .Branch }}-{{ checksum "today" }}-{{ checksum ".circleci/docs-cache-timestamp" }}
-          paths:
-            - doc
-
+version: 2
 
 jobs:
-
-  quick-build:
+  doc-min-dependencies:
     docker:
-      - image: circleci/python:3.7
+      - image: circleci/python:3.7.3-stretch
     environment:
-      DISTRIB: "conda"
-      PYTHON_VERSION: "3.7"
-      NUMPY_VERSION: "*"
-      SCIPY_VERSION: "*"
-      SCIKIT_LEARN_VERSION: "*"
-      JOBLIB_VERSION: "*"
-      MATPLOTLIB_VERSION: "*"
-
+      - OMP_NUM_THREADS: 2
+      - MKL_NUM_THREADS: 2
+      - MINICONDA_PATH: ~/miniconda
+      - CONDA_ENV_NAME: testenv
+      - PYTHON_VERSION: 3.6
+      - NUMPY_VERSION: 1.13.3
+      - SCIPY_VERSION: 0.19.1
+      - MATPLOTLIB_VERSION: 2.1.1
+      # on conda, this is the latest for python 3.5
+      # The following places need to be in sync with regard to Cython version:
+      # - .circleci config file
+      # - sklearn/_build_utils/__init__.py
+      # - advanced installation guide
+      - CYTHON_VERSION: 0.28.5
+      - SCIKIT_IMAGE_VERSION: 0.13
     steps:
       - checkout
-      - run: chmod +x ./.circleci/checkout_merge_commit.sh
-      - run: ./.circleci/checkout_merge_commit.sh
-      - run: chmod +x ./.circleci/build_doc.sh
-      - run: ./.circleci/build_doc.sh
-      - store_results
-      - save_to_cache
+      - run: ./build_tools/circle/checkout_merge_commit.sh
+      - restore_cache:
+          key: v1-datasets-{{ .Branch }}
+      - restore_cache:
+          keys:
+            - doc-min-deps-ccache-{{ .Branch }}
+            - doc-min-deps-ccache
+      - run: ./build_tools/circle/build_doc.sh
+      - save_cache:
+          key: doc-min-deps-ccache-{{ .Branch }}-{{ .BuildNum }}
+          paths:
+            - ~/.ccache
+            - ~/.cache/pip
+      - save_cache:
+          key: v1-datasets-{{ .Branch }}
+          paths:
+            - ~/scikit_learn_data
+      - store_artifacts:
+          path: doc/_build/html/stable
+          destination: doc
+      - store_artifacts:
+          path: ~/log.txt
+          destination: log.txt
 
-  full-build:
+  doc:
     docker:
-      - image: circleci/python:3.7
+      - image: circleci/python:3.7.3-stretch
     environment:
-      DISTRIB: "conda"
-      PYTHON_VERSION: "3.7"
-      NUMPY_VERSION: "*"
-      SCIPY_VERSION: "*"
-      SCIKIT_LEARN_VERSION: "*"
-      MATPLOTLIB_VERSION: "*"
-
+      - OMP_NUM_THREADS: 2
+      - MKL_NUM_THREADS: 2
+      - MINICONDA_PATH: ~/miniconda
+      - CONDA_ENV_NAME: testenv
+      - PYTHON_VERSION: 3
     steps:
       - checkout
-      - preinstall
-      - cache_ignorant_conda_setup
-      - install_dependencies
-      - build_docs
-      - store_results
+      - run: ./build_tools/circle/checkout_merge_commit.sh
+      - restore_cache:
+          key: v1-datasets-{{ .Branch }}
+      - restore_cache:
+          keys:
+            - doc-ccache-{{ .Branch }}
+            - doc-ccache
+      - run: ./build_tools/circle/build_doc.sh
+      - save_cache:
+          key: doc-ccache-{{ .Branch }}-{{ .BuildNum }}
+          paths:
+            - ~/.ccache
+            - ~/.cache/pip
+      - save_cache:
+          key: v1-datasets-{{ .Branch }}
+          paths:
+            - ~/scikit_learn_data
+      - store_artifacts:
+          path: doc/_build/html/stable
+          destination: doc
+      - store_artifacts:
+          path: ~/log.txt
+          destination: log.txt
+      # Persists generated documentation so that it can be attached and deployed
+      # in the 'deploy' step.
+      - persist_to_workspace:
+          root: doc/_build/html
+          paths: .
 
+  lint:
+    docker:
+      - image: circleci/python:3.6
+    steps:
+      - checkout
+      - run: ./build_tools/circle/checkout_merge_commit.sh
+      - run:
+          name: dependencies
+          command: sudo pip install flake8
+      - run:
+          name: linting
+          command: ./build_tools/circle/linting.sh
+
+  pypy3:
+    docker:
+      - image: pypy:3.6-7.2.0
+    steps:
+      - restore_cache:
+          keys:
+            - pypy3-ccache-{{ .Branch }}
+            - pypy3-ccache
+      - checkout
+      - run: ./build_tools/circle/build_test_pypy.sh
+      - save_cache:
+          key: pypy3-ccache-{{ .Branch }}-{{ .BuildNum }}
+          paths:
+            - ~/.ccache
+            - ~/.cache/pip
+
+  deploy:
+    docker:
+      - image: circleci/python:3.6
+    steps:
+      - checkout
+      - run: ./build_tools/circle/checkout_merge_commit.sh
+      # Attach documentation generated in the 'doc' step so that it can be
+      # deployed.
+      - attach_workspace:
+          at: doc/_build/html
+      - run: ls -ltrh doc/_build/html/stable
+      - deploy:
+          command: |
+            if [[ "${CIRCLE_BRANCH}" =~ ^master$|^[0-9]+\.[0-9]+\.X$ ]]; then
+              bash build_tools/circle/push_doc.sh doc/_build/html/stable
+            fi
 
 workflows:
   version: 2
-  push:
+  build-doc-and-deploy:
     jobs:
-      - quick-build:
-          filters:
-            branches:
-              ignore:
-                - master
-                - test-circleci  # test branch to check if merges occur on master as expected.
-
-      - full-build:
+      - lint
+      - doc:
+          requires:
+            - lint
+      - doc-min-dependencies:
+          requires:
+            - lint
+      - pypy3:
           filters:
             branches:
               only:
-                - master
-                - test-circleci  # test branch to check if merges occur on master as expected.
-
-  nightly:
+                - 0.20.X
+      - deploy:
+          requires:
+            - doc
+  pypy:
     triggers:
       - schedule:
-          cron: "0 6 * * *"
+          cron: "0 0 * * *"
           filters:
             branches:
               only:
                 - master
     jobs:
-      - full-build
+      - pypy3
