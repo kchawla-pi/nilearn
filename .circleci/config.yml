@@ -40,7 +40,7 @@ jobs:
           paths:
             - ~/nilearn_data
       - store_artifacts:
-          path: doc/_build/html/stable
+          path: doc/_build/html
           destination: doc
       - store_artifacts:
           path: ~/log.txt
@@ -75,7 +75,7 @@ jobs:
           paths:
             - ~/nilearn_data
       - store_artifacts:
-          path: doc/_build/html/stable
+          path: doc/_build/html
           destination: doc
       - store_artifacts:
           path: ~/log.txt
