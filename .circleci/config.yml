@@ -174,7 +174,6 @@ jobs:
 
 
 workflows:
-  version: 2
   push:
     jobs:
       - quick-build:
